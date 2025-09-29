@@ -66,6 +66,13 @@ class ConfidentialityAPI {
   static verifyPassword(password, hash) {
     return bcrypt.compareSync(password, hash);
   }
+
+  static sanitizeHtml(text) {
+    // Basic HTML sanitization - remove script tags and other dangerous elements
+    return text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+               .replace(/<[^>]*>/g, '')
+               .trim();
+  }
 }
 
 // Traffic Agent - AI/Algorithmic Layer
@@ -211,9 +218,15 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { driverName, vehicleModel, vehicleType, email, password } = req.body;
-    
+
     if (!driverName || !vehicleModel || !vehicleType || !email || !password) {
       return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
     }
 
     // Check if driver already exists
@@ -357,12 +370,18 @@ app.post('/api/reports/submit', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Report type, location, and description are required' });
     }
 
+    // Validate report type
+    const validReportTypes = ['accident', 'congestion', 'hazard', 'construction', 'weather'];
+    if (!validReportTypes.includes(reportType)) {
+      return res.status(400).json({ error: 'Invalid report type' });
+    }
+
     const report = {
       id: crypto.randomUUID(),
       driverId, // This is kept for backend tracking but not exposed to other users
       reportType,
       location,
-      description,
+      description: ConfidentialityAPI.sanitizeHtml(description),
       latitude: latitude || 37.7749,
       longitude: longitude || -122.4194,
       vehicleType,
@@ -451,6 +470,15 @@ app.post('/api/navigation/route', authenticateToken, (req, res) => {
 
     if (!startLat || !startLng || !endLat || !endLng) {
       return res.status(400).json({ error: 'Start and end coordinates are required' });
+    }
+
+    // Validate coordinate values
+    const coords = [startLat, startLng, endLat, endLng];
+    for (const coord of coords) {
+      const num = parseFloat(coord);
+      if (isNaN(num) || num < -180 || num > 180) {
+        return res.status(400).json({ error: 'Invalid coordinate values' });
+      }
     }
 
     const route = TrafficAgent.calculateOptimalRoute(
@@ -581,10 +609,16 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000); // Run every 5 minutes
 
-app.listen(PORT, () => {
-  console.log(`🚦 The Traffic Look Out API Server running on port ${PORT}`);
-  console.log(`🔒 Confidentiality API: Operational`);
-  console.log(`🤖 Traffic Agents: Active`);
-  console.log(`🗺️ Navigation API: Ready`);
-  console.log(`📊 Statistics API: Online`);
-});
+// Export the app for testing
+module.exports = app;
+
+// Start server only if this file is run directly
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚦 The Traffic Look Out API Server running on port ${PORT}`);
+    console.log(`🔒 Confidentiality API: Operational`);
+    console.log(`🤖 Traffic Agents: Active`);
+    console.log(`🗺️ Navigation API: Ready`);
+    console.log(`📊 Statistics API: Online`);
+  });
+}

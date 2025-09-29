@@ -1,0 +1,712 @@
+const request = require('supertest');
+const app = require('../server');
+
+describe('The Traffic Look Out API Tests', () => {
+  let authToken;
+  let driverId;
+
+  // Test data
+  const testDriver = {
+    driverName: 'Test Driver',
+    email: 'test@example.com',
+    password: 'testpassword123',
+    vehicleModel: 'Test Vehicle 2023',
+    vehicleType: 'regular'
+  };
+
+  const emergencyDriver = {
+    driverName: 'Emergency Driver',
+    email: 'emergency@example.com',
+    password: 'emergency123',
+    vehicleModel: 'Ambulance 2023',
+    vehicleType: 'emergency'
+  };
+
+  describe('Health Check', () => {
+    it('should return healthy status', async () => {
+      const response = await request(app)
+        .get('/api/health')
+        .expect(200);
+
+      expect(response.body).toHaveProperty('status', 'healthy');
+      expect(response.body).toHaveProperty('services');
+      expect(response.body.services.confidentialityAPI).toBe('operational');
+    });
+  });
+
+  describe('Authentication Endpoints', () => {
+    describe('POST /api/auth/register', () => {
+      it('should register a new driver successfully', async () => {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send(testDriver)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('token');
+        expect(response.body).toHaveProperty('driver');
+        expect(response.body.driver).toHaveProperty('vehicleModel', testDriver.vehicleModel);
+        expect(response.body.driver).toHaveProperty('vehicleType', testDriver.vehicleType);
+
+        authToken = response.body.token;
+        driverId = response.body.driver.id;
+      });
+
+      it('should register an emergency vehicle', async () => {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send(emergencyDriver)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body.driver.vehicleType).toBe('emergency');
+      });
+
+      it('should fail with missing required fields', async () => {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send({
+            driverName: 'Test Driver',
+            email: 'test2@example.com'
+            // Missing password, vehicleModel, vehicleType
+          })
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error', 'All fields are required');
+      });
+
+      it('should fail with duplicate email', async () => {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send(testDriver)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error', 'Driver already registered with this email');
+      });
+
+      it('should fail with invalid email format', async () => {
+        const response = await request(app)
+          .post('/api/auth/register')
+          .send({
+            ...testDriver,
+            email: 'invalid-email'
+          })
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
+      });
+    });
+
+    describe('POST /api/auth/login', () => {
+      it('should login successfully with valid credentials', async () => {
+        const response = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: testDriver.email,
+            password: testDriver.password
+          })
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('token');
+        expect(response.body).toHaveProperty('driver');
+      });
+
+      it('should fail with invalid credentials', async () => {
+        const response = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: testDriver.email,
+            password: 'wrongpassword'
+          })
+          .expect(401);
+
+        expect(response.body).toHaveProperty('error', 'Invalid credentials');
+      });
+
+      it('should fail with missing credentials', async () => {
+        const response = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: testDriver.email
+          })
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error', 'Email and password are required');
+      });
+    });
+  });
+
+  describe('Tracking Endpoints', () => {
+    describe('POST /api/tracking/toggle', () => {
+      it('should require authentication', async () => {
+        const response = await request(app)
+          .post('/api/tracking/toggle')
+          .send({
+            latitude: 37.7749,
+            longitude: -122.4194,
+            isActive: true
+          })
+          .expect(401);
+      });
+
+      it('should start tracking successfully', async () => {
+        const response = await request(app)
+          .post('/api/tracking/toggle')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            latitude: 37.7749,
+            longitude: -122.4194,
+            isActive: true
+          })
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('isTracking', true);
+        expect(response.body).toHaveProperty('message', 'Live tracking started');
+      });
+
+      it('should stop tracking successfully', async () => {
+        const response = await request(app)
+          .post('/api/tracking/toggle')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            isActive: false
+          })
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('isTracking', false);
+        expect(response.body).toHaveProperty('message', 'Live tracking stopped');
+      });
+    });
+  });
+
+  describe('Traffic Reports Endpoints', () => {
+    describe('POST /api/reports/submit', () => {
+      const reportData = {
+        reportType: 'accident',
+        location: 'Test Street & Main Ave',
+        description: 'Test accident for API testing',
+        latitude: 37.7749,
+        longitude: -122.4194,
+        proofText: 'Test proof text'
+      };
+
+      it('should require authentication', async () => {
+        const response = await request(app)
+          .post('/api/reports/submit')
+          .send(reportData)
+          .expect(401);
+      });
+
+      it('should submit traffic report successfully', async () => {
+        const response = await request(app)
+          .post('/api/reports/submit')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send(reportData)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('reportId');
+        expect(response.body).toHaveProperty('message', 'Traffic report submitted successfully');
+      });
+
+      it('should fail with missing required fields', async () => {
+        const response = await request(app)
+          .post('/api/reports/submit')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            reportType: 'accident',
+            location: 'Test Street'
+            // Missing description
+          })
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error', 'Report type, location, and description are required');
+      });
+
+      it('should submit emergency report successfully', async () => {
+        // First login as emergency driver
+        const loginResponse = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: emergencyDriver.email,
+            password: emergencyDriver.password
+          });
+
+        const emergencyToken = loginResponse.body.token;
+
+        const response = await request(app)
+          .post('/api/reports/submit')
+          .set('Authorization', `Bearer ${emergencyToken}`)
+          .send({
+            ...reportData,
+            reportType: 'congestion',
+            description: 'Emergency vehicle needs priority access'
+          })
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+      });
+    });
+
+    describe('GET /api/reports', () => {
+      it('should get traffic reports without authentication', async () => {
+        const response = await request(app)
+          .get('/api/reports')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('reports');
+        expect(Array.isArray(response.body.reports)).toBe(true);
+        expect(response.body).toHaveProperty('totalActive');
+      });
+
+      it('should respect limit parameter', async () => {
+        const response = await request(app)
+          .get('/api/reports?limit=5')
+          .expect(200);
+
+        expect(response.body.reports.length).toBeLessThanOrEqual(5);
+      });
+
+      it('should filter by report type', async () => {
+        const response = await request(app)
+          .get('/api/reports?type=accident')
+          .expect(200);
+
+        response.body.reports.forEach(report => {
+          expect(report.reportType).toBe('accident');
+        });
+      });
+
+      it('should not expose sensitive driver information', async () => {
+        const response = await request(app)
+          .get('/api/reports')
+          .expect(200);
+
+        if (response.body.reports.length > 0) {
+          const report = response.body.reports[0];
+          expect(report).not.toHaveProperty('driverId');
+          expect(report).not.toHaveProperty('driverName');
+          expect(report).not.toHaveProperty('email');
+        }
+      });
+    });
+  });
+
+  describe('Navigation Endpoints', () => {
+    describe('POST /api/navigation/route', () => {
+      const routeData = {
+        startLat: 37.7749,
+        startLng: -122.4194,
+        endLat: 37.7849,
+        endLng: -122.4094
+      };
+
+      it('should require authentication', async () => {
+        const response = await request(app)
+          .post('/api/navigation/route')
+          .send(routeData)
+          .expect(401);
+      });
+
+      it('should calculate route successfully', async () => {
+        const response = await request(app)
+          .post('/api/navigation/route')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send(routeData)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('route');
+        expect(response.body.route).toHaveProperty('distance');
+        expect(response.body.route).toHaveProperty('duration');
+        expect(response.body.route).toHaveProperty('waypoints');
+        expect(response.body.route).toHaveProperty('trafficCondition');
+        expect(response.body).toHaveProperty('trafficConditions');
+      });
+
+      it('should provide priority routing for emergency vehicles', async () => {
+        // Login as emergency driver
+        const loginResponse = await request(app)
+          .post('/api/auth/login')
+          .send({
+            email: emergencyDriver.email,
+            password: emergencyDriver.password
+          });
+
+        const emergencyToken = loginResponse.body.token;
+
+        const response = await request(app)
+          .post('/api/navigation/route')
+          .set('Authorization', `Bearer ${emergencyToken}`)
+          .send(routeData)
+          .expect(200);
+
+        expect(response.body.route.isPriority).toBe(true);
+        expect(response.body.emergencyPriority).toBe(true);
+      });
+
+      it('should fail with missing coordinates', async () => {
+        const response = await request(app)
+          .post('/api/navigation/route')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            startLat: 37.7749,
+            startLng: -122.4194
+            // Missing endLat and endLng
+          })
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error', 'Start and end coordinates are required');
+      });
+    });
+  });
+
+  describe('Traffic Data Endpoints', () => {
+    describe('GET /api/traffic/live', () => {
+      it('should get live traffic data without authentication', async () => {
+        const response = await request(app)
+          .get('/api/traffic/live')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('data');
+        expect(response.body.data).toHaveProperty('congestionZones');
+        expect(response.body.data).toHaveProperty('activeDrivers');
+        expect(response.body.data).toHaveProperty('emergencyVehicles');
+        expect(response.body.data).toHaveProperty('trafficConditions');
+        expect(response.body.data).toHaveProperty('lastUpdated');
+      });
+
+      it('should return valid traffic data structure', async () => {
+        const response = await request(app)
+          .get('/api/traffic/live')
+          .expect(200);
+
+        const { data } = response.body;
+        expect(Array.isArray(data.congestionZones)).toBe(true);
+        expect(typeof data.activeDrivers).toBe('number');
+        expect(typeof data.emergencyVehicles).toBe('number');
+        expect(data.trafficConditions).toHaveProperty('timestamp');
+        expect(data.trafficConditions).toHaveProperty('congestionLevel');
+      });
+    });
+  });
+
+  describe('Statistics Endpoints', () => {
+    describe('GET /api/stats', () => {
+      it('should get system statistics without authentication', async () => {
+        const response = await request(app)
+          .get('/api/stats')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('stats');
+        expect(response.body.stats).toHaveProperty('activeDrivers');
+        expect(response.body.stats).toHaveProperty('totalReportsToday');
+        expect(response.body.stats).toHaveProperty('emergencyVehiclesActive');
+        expect(response.body.stats).toHaveProperty('routesOptimizedToday');
+        expect(response.body.stats).toHaveProperty('totalRegisteredDrivers');
+      });
+
+      it('should return valid statistics data types', async () => {
+        const response = await request(app)
+          .get('/api/stats')
+          .expect(200);
+
+        const { stats } = response.body;
+        expect(typeof stats.activeDrivers).toBe('number');
+        expect(typeof stats.totalReportsToday).toBe('number');
+        expect(typeof stats.emergencyVehiclesActive).toBe('number');
+        expect(typeof stats.routesOptimizedToday).toBe('number');
+        expect(typeof stats.totalRegisteredDrivers).toBe('number');
+      });
+    });
+  });
+
+  describe('Security and Rate Limiting', () => {
+    it('should reject requests with invalid JWT tokens', async () => {
+      const response = await request(app)
+        .post('/api/tracking/toggle')
+        .set('Authorization', 'Bearer invalid-token')
+        .send({
+          latitude: 37.7749,
+          longitude: -122.4194,
+          isActive: true
+        })
+        .expect(403);
+    });
+
+    it('should reject requests without proper authorization header', async () => {
+      const response = await request(app)
+        .post('/api/tracking/toggle')
+        .set('Authorization', 'InvalidFormat')
+        .send({
+          latitude: 37.7749,
+          longitude: -122.4194,
+          isActive: true
+        })
+        .expect(401);
+    });
+
+    it('should handle CORS properly', async () => {
+      const response = await request(app)
+        .options('/api/health')
+        .set('Origin', 'http://localhost:3000')
+        .expect(204);
+
+      expect(response.headers['access-control-allow-origin']).toBeDefined();
+    });
+
+    it('should include security headers', async () => {
+      const response = await request(app)
+        .get('/api/health')
+        .expect(200);
+
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['x-frame-options']).toBeDefined();
+      expect(response.headers['x-xss-protection']).toBeDefined();
+    });
+  });
+
+  describe('Data Validation and Sanitization', () => {
+    it('should validate coordinates in route calculation', async () => {
+      const response = await request(app)
+        .post('/api/navigation/route')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          startLat: 'invalid',
+          startLng: -122.4194,
+          endLat: 37.7849,
+          endLng: -122.4094
+        })
+        .expect(400);
+    });
+
+    it('should validate report data types', async () => {
+      const response = await request(app)
+        .post('/api/reports/submit')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          reportType: 'invalid-type',
+          location: 'Test Location',
+          description: 'Test Description'
+        })
+        .expect(400);
+    });
+
+    it('should sanitize HTML in report descriptions', async () => {
+      const maliciousDescription = '<script>alert("xss")</script>Legitimate description';
+
+      const response = await request(app)
+        .post('/api/reports/submit')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          reportType: 'accident',
+          location: 'Test Location',
+          description: maliciousDescription
+        })
+        .expect(200);
+
+      // Verify the report was created but without the script tag
+      const reportsResponse = await request(app)
+        .get('/api/reports?limit=1')
+        .expect(200);
+
+      const latestReport = reportsResponse.body.reports[0];
+      expect(latestReport.description).not.toContain('<script>');
+      expect(latestReport.description).toContain('Legitimate description');
+    });
+  });
+
+  describe('Performance and Load Testing', () => {
+    it('should handle multiple concurrent requests', async () => {
+      const requests = [];
+
+      // Create 10 concurrent requests
+      for (let i = 0; i < 10; i++) {
+        requests.push(
+          request(app)
+            .get('/api/health')
+            .expect(200)
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      responses.forEach(response => {
+        expect(response.body.status).toBe('healthy');
+      });
+    });
+
+    it('should respond within acceptable time limits', async () => {
+      const startTime = Date.now();
+
+      await request(app)
+        .get('/api/stats')
+        .expect(200);
+
+      const responseTime = Date.now() - startTime;
+      expect(responseTime).toBeLessThan(1000); // Should respond within 1 second
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle server errors gracefully', async () => {
+      // This would typically test error scenarios that could occur in production
+      // For now, we test the basic error structure
+      const response = await request(app)
+        .get('/api/nonexistent-endpoint')
+        .expect(404);
+    });
+
+    it('should return consistent error format', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'nonexistent@example.com',
+          password: 'wrongpassword'
+        })
+        .expect(401);
+
+      expect(response.body).toHaveProperty('error');
+      expect(typeof response.body.error).toBe('string');
+    });
+  });
+
+  describe('Privacy and Data Protection', () => {
+    it('should not expose sensitive data in API responses', async () => {
+      const response = await request(app)
+        .get('/api/reports')
+        .expect(200);
+
+      if (response.body.reports.length > 0) {
+        const report = response.body.reports[0];
+
+        // Should not expose sensitive driver information
+        expect(report).not.toHaveProperty('driverId');
+        expect(report).not.toHaveProperty('encryptedName');
+        expect(report).not.toHaveProperty('encryptedEmail');
+        expect(report).not.toHaveProperty('hashedPassword');
+
+        // Should only expose safe, anonymized data
+        expect(report).toHaveProperty('reportType');
+        expect(report).toHaveProperty('location');
+        expect(report).toHaveProperty('vehicleType');
+        expect(report).toHaveProperty('timestamp');
+      }
+    });
+
+    it('should encrypt sensitive data during registration', async () => {
+      const testEmail = 'privacy-test@example.com';
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          driverName: 'Privacy Test Driver',
+          email: testEmail,
+          password: 'testpassword123',
+          vehicleModel: 'Privacy Test Vehicle',
+          vehicleType: 'regular'
+        })
+        .expect(200);
+
+      // Response should not contain the actual email or name
+      expect(response.body.driver).not.toHaveProperty('driverName');
+      expect(response.body.driver).not.toHaveProperty('email');
+      expect(response.body).not.toHaveProperty('password');
+    });
+  });
+
+  describe('Integration Tests', () => {
+    it('should complete full user workflow', async () => {
+      const workflowDriver = {
+        driverName: 'Workflow Test Driver',
+        email: 'workflow@example.com',
+        password: 'workflow123',
+        vehicleModel: 'Workflow Vehicle',
+        vehicleType: 'regular'
+      };
+
+      // 1. Register
+      const registerResponse = await request(app)
+        .post('/api/auth/register')
+        .send(workflowDriver)
+        .expect(200);
+
+      const token = registerResponse.body.token;
+
+      // 2. Start tracking
+      await request(app)
+        .post('/api/tracking/toggle')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          latitude: 37.7749,
+          longitude: -122.4194,
+          isActive: true
+        })
+        .expect(200);
+
+      // 3. Submit a report
+      await request(app)
+        .post('/api/reports/submit')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          reportType: 'congestion',
+          location: 'Workflow Test Street',
+          description: 'Integration test traffic report'
+        })
+        .expect(200);
+
+      // 4. Calculate a route
+      await request(app)
+        .post('/api/navigation/route')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          startLat: 37.7749,
+          startLng: -122.4194,
+          endLat: 37.7849,
+          endLng: -122.4094
+        })
+        .expect(200);
+
+      // 5. Stop tracking
+      await request(app)
+        .post('/api/tracking/toggle')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          isActive: false
+        })
+        .expect(200);
+
+      // 6. Verify data consistency
+      const statsResponse = await request(app)
+        .get('/api/stats')
+        .expect(200);
+
+      expect(statsResponse.body.stats.totalRegisteredDrivers).toBeGreaterThan(0);
+    });
+  });
+});
+
+// Helper function to clean up test data
+afterAll(async () => {
+  // In a real application, you would clean up test data here
+  // For this in-memory implementation, data is automatically cleaned up
+  console.log('🧹 Test cleanup completed');
+});
+
+// Setup and teardown
+beforeAll(async () => {
+  console.log('🚀 Starting API tests for The Traffic Look Out');
+});
+
+beforeEach(() => {
+  // Reset any global state if needed
+});
+
+afterEach(() => {
+  // Clean up after each test if needed
+});
