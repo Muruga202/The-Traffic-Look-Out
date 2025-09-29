@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Traffic Look Out</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-traffic-light"></i> The Traffic Look Out</h1>
+            <p>Smart Traffic Monitoring & Navigation System</p>
+        </div>
+        
+        <div class="main-content">
+            <!-- Authentication Section -->
+            <div class="card auth-section" id="authSection">
+                <h3><i class="fas fa-user-shield"></i> Driver Authentication</h3>
+                
+                <!-- Registration Form -->
+                <div id="registrationForm">
+                    <h4>Register New Driver</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="regDriverName">Driver Name</label>
+                            <input type="text" id="regDriverName" placeholder="Enter your full name" required>
+                            <small class="privacy-notice">🔒 Encrypted and stored securely</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="regEmail">Email</label>
+                            <input type="email" id="regEmail" placeholder="your.email@example.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regPassword">Password</label>
+                            <input type="password" id="regPassword" placeholder="Create a secure password" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="regVehicleModel">Vehicle Model</label>
+                            <input type="text" id="regVehicleModel" placeholder="e.g., Toyota Camry 2020" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regVehicleType">Vehicle Type</label>
+                            <select id="regVehicleType" required>
+                                <option value="regular">Regular Vehicle</option>
+                                <option value="emergency">Emergency Service</option>
+                                <option value="public">Public Transport</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-primary" onclick="registerDriver()">
+                                <i class="fas fa-user-plus"></i> Register
+                            </button>
+                        </div>
+                    </div>
+                    <p class="switch-form">Already have an account? <a href="#" onclick="showLoginForm()">Login here</a></p>
+                </div>
+                
+                <!-- Login Form -->
+                <div id="loginForm" class="hidden">
+                    <h4>Driver Login</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="loginEmail">Email</label>
+                            <input type="email" id="loginEmail" placeholder="your.email@example.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-primary" onclick="loginDriver()">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </button>
+                        </div>
+                    </div>
+                    <p class="switch-form">Don't have an account? <a href="#" onclick="showRegistrationForm()">Register here</a></p>
+                </div>
+                
+                <!-- Driver Dashboard -->
+                <div id="driverDashboard" class="hidden">
+                    <div class="dashboard-header">
+                        <div class="driver-info">
+                            <h4><i class="fas fa-user"></i> Welcome, Driver!</h4>
+                            <p><strong>Vehicle:</strong> <span id="displayVehicle">Loading...</span></p>
+                            <span id="emergencyBadge" class="emergency-badge hidden">
+                                <i class="fas fa-ambulance"></i> EMERGENCY VEHICLE
+                            </span>
+                        </div>
+                        <div class="status-section">
+                            <span class="status-indicator" id="statusIndicator"></span>
+                            <span id="driverStatus">Offline</span>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-controls">
+                        <button class="btn btn-success" onclick="toggleTracking()" id="trackingBtn">
+                            <i class="fas fa-play"></i> Start Live Tracking
+                        </button>
+                        <button class="btn btn-danger" onclick="logout()">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Live Traffic Map -->
+            <div class="card">
+                <h3><i class="fas fa-map"></i> Live Traffic Map</h3>
+                <div class="traffic-map" id="trafficMap">
+                    <div class="map-overlay" id="mapOverlay"></div>
+                    <div class="map-info">
+                        <h4>Real-Time Traffic Conditions</h4>
+                        <div class="traffic-legend">
+                            <span class="legend-item">
+                                <span class="legend-color high"></span>Heavy Traffic
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-color moderate"></span>Moderate
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-color light"></span>Light Traffic
+                            </span>
+                        </div>
+                        <div id="routeInfo" class="route-info hidden">
+                            <h5><i class="fas fa-route"></i> Recommended Route:</h5>
+                            <div id="routeDetails">Calculating...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="map-controls">
+                    <div class="coordinates-input">
+                        <input type="number" id="startLat" placeholder="Start Lat" value="37.7749" step="0.0001">
+                        <input type="number" id="startLng" placeholder="Start Lng" value="-122.4194" step="0.0001">
+                        <input type="number" id="endLat" placeholder="End Lat" value="37.7849" step="0.0001">
+                        <input type="number" id="endLng" placeholder="End Lng" value="-122.4094" step="0.0001">
+                    </div>
+                    <button class="btn btn-info" onclick="requestRoute()" id="routeBtn" disabled>
+                        <i class="fas fa-directions"></i> Calculate Route
+                    </button>
+                    <button class="btn" onclick="refreshTrafficData()">
+                        <i class="fas fa-sync-alt"></i> Refresh Traffic
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Traffic Reporting -->
+            <div class="card">
+                <h3><i class="fas fa-exclamation-triangle"></i> Traffic Reports</h3>
+                <div class="report-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="reportType">Report Type</label>
+                            <select id="reportType">
+                                <option value="accident">Accident</option>
+                                <option value="congestion">Heavy Congestion</option>
+                                <option value="hazard">Road Hazard</option>
+                                <option value="construction">Construction</option>
+                                <option value="weather">Weather Condition</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="reportLocation">Location</label>
+                            <input type="text" id="reportLocation" placeholder="e.g., Main St & 5th Ave" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="reportDescription">Description</label>
+                        <textarea id="reportDescription" placeholder="Brief description of the situation" rows="3" required></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="proofText">Additional Details</label>
+                            <input type="text" id="proofText" placeholder="Lane blocked, estimated delay, etc.">
+                        </div>
+                        <div class="form-group">
+                            <label for="proofImage">Upload Photo (Optional)</label>
+                            <input type="file" id="proofImage" accept="image/*">
+                        </div>
+                    </div>
+                    <button class="btn btn-warning" onclick="submitReport()" id="reportBtn" disabled>
+                        <i class="fas fa-paper-plane"></i> Submit Report
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Live Traffic Updates -->
+            <div class="card">
+                <h3><i class="fas fa-rss"></i> Live Traffic Updates</h3>
+                <div class="traffic-reports" id="trafficReports">
+                    <div class="loading">Loading traffic reports...</div>
+                </div>
+                <button class="btn btn-secondary" onclick="loadTrafficReports()">
+                    <i class="fas fa-refresh"></i> Refresh Reports
+                </button>
+            </div>
+        </div>
+        
+        <!-- Statistics Dashboard -->
+        <div class="stats-container">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="activeDrivers">0</div>
+                        <div class="stat-label">Active Drivers</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="reportsToday">0</div>
+                        <div class="stat-label">Reports Today</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-ambulance"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="emergencyVehicles">0</div>
+                        <div class="stat-label">Emergency Vehicles</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-route"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="routesOptimized">0</div>
+                        <div class="stat-label">Routes Optimized</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="avgResponseTime">0s</div>
+                        <div class="stat-label">Avg Response Time</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-server"></i></div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="systemStatus">Online</div>
+                        <div class="stat-label">System Status</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Privacy Notice -->
+        <div class="privacy-notice">
+            <h4><i class="fas fa-shield-alt"></i> Privacy & Security</h4>
+            <p>Your personal information is encrypted using AES-256 encryption and stored securely. Only anonymized data is shared for traffic optimization. 
+            Your name and sensitive details are accessible only to the system backend through our Confidentiality API. 
+            Other drivers cannot see your personal information. We comply with GDPR and other privacy regulations.</p>
+            <div class="security-features">
+                <span class="security-badge"><i class="fas fa-lock"></i> End-to-End Encryption</span>
+                <span class="security-badge"><i class="fas fa-eye-slash"></i> Anonymous Reporting</span>
+                <span class="security-badge"><i class="fas fa-shield-virus"></i> Secure API</span>
+                <span class="security-badge"><i class="fas fa-user-secret"></i> GDPR Compliant</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+    
+    <!-- Loading Modal -->
+    <div id="loadingModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="spinner"></div>
+            <p>Processing request...</p>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
